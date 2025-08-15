@@ -2,7 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, Plus, Trash2, Sun, Moon } from "lucide-react";
+import {
+  Calendar,
+  Plus,
+  Trash2,
+  Edit,
+  Clock,
+  Check,
+  Sun,
+  Moon,
+} from "lucide-react";
 import { format, parseISO, isToday, isTomorrow, isYesterday } from "date-fns";
 import { DatePicker } from "@/components/DatePicker";
 import { TaskForm } from "@/components/TaskForm";
@@ -73,24 +82,30 @@ export default function DailyPlanner() {
   }, [tasks]);
 
   const setupNotifications = () => {
-    if (
-      "Notification" in window &&
-      Notification.permission === "granted" &&
-      navigator.serviceWorker
-    ) {
+    if ("Notification" in window && Notification.permission === "granted" && navigator.serviceWorker) {
       navigator.serviceWorker.ready.then((registration) => {
+        console.log("Setting up notifications...");
         Object.entries(tasks).forEach(([dateKey, taskList]) => {
           const taskDate = new Date(dateKey);
-          const today = new Date();
-          if (taskDate >= new Date(today.setHours(0, 0, 0, 0))) {
-            taskList.forEach((task) => {
+          console.log(`Processing tasks for ${dateKey}`);
+          taskList.forEach((task) => {
+            const [hours, minutes] = task.startTime.split(':').map(Number);
+            const notificationTime = new Date(taskDate);
+            notificationTime.setHours(hours, minutes, 0, 0);
+            const now = new Date();
+            console.log(`Task: ${task.title}, Scheduled: ${notificationTime}, Now: ${now}`);
+            if (notificationTime > now) {
+              const timeUntilNotification = notificationTime.getTime() - now.getTime();
+              console.log(`Scheduling notification in ${timeUntilNotification} ms`);
               registration?.active?.postMessage({
-                type: "scheduleNotification",
+                type: 'scheduleNotification',
                 task,
                 dateKey,
               });
-            });
-          }
+            } else {
+              console.log(`Notification time ${notificationTime} is in the past, skipping`);
+            }
+          });
         });
       });
     }
@@ -109,7 +124,6 @@ export default function DailyPlanner() {
       }
     }
   };
-
   const dateKey = format(selectedDate, "yyyy-MM-dd");
   const currentDateTasks = tasks[dateKey] || [];
 

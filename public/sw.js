@@ -1,4 +1,3 @@
-// Simple service worker to handle notifications
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
@@ -21,9 +20,9 @@ self.addEventListener('message', (event) => {
     const [hours, minutes] = task.startTime.split(':').map(Number);
     const notificationTime = new Date(dateKey);
     notificationTime.setHours(hours, minutes, 0, 0);
-
     if (notificationTime > new Date()) {
       const timeUntilNotification = notificationTime.getTime() - Date.now();
+      console.log(`SW: Scheduling ${task.title} in ${timeUntilNotification} ms`);
       setTimeout(() => {
         self.registration.showNotification('Task Reminder', {
           body: `It's time for: ${task.title}`,
