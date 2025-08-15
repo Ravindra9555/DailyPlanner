@@ -97,13 +97,25 @@ export default function DailyPlanner() {
             if (notificationTime > now) {
               const timeUntilNotification = notificationTime.getTime() - now.getTime();
               console.log(`Scheduling notification in ${timeUntilNotification} ms`);
-              registration?.active?.postMessage({
-                type: 'scheduleNotification',
-                task,
-                dateKey,
-              });
-            } else {
-              console.log(`Notification time ${notificationTime} is in the past, skipping`);
+              // Check if active service worker exists before posting message
+              if (registration.active) {
+                registration.active.postMessage({
+                  type: 'scheduleNotification',
+                  task,
+                  dateKey,
+                });
+              } else {
+                console.warn("No active service worker available for posting message.");
+              }
+              // Test with a 10-second delay
+              const testDelay = 10000;
+              setTimeout(() => {
+                console.log(`Test notification for ${task.title}`);
+                new Notification('Test Reminder', {
+                  body: `Test for: ${task.title}`,
+                  icon: '/android-icon-192x192.png',
+                });
+              }, testDelay);
             }
           });
         });

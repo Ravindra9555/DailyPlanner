@@ -1,3 +1,7 @@
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
@@ -15,6 +19,7 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('message', (event) => {
+  console.log('SW: Received message', event.data);
   const { type, task, dateKey } = event.data;
   if (type === 'scheduleNotification') {
     const [hours, minutes] = task.startTime.split(':').map(Number);
@@ -24,11 +29,14 @@ self.addEventListener('message', (event) => {
       const timeUntilNotification = notificationTime.getTime() - Date.now();
       console.log(`SW: Scheduling ${task.title} in ${timeUntilNotification} ms`);
       setTimeout(() => {
+        console.log(`SW: Firing notification for ${task.title}`);
         self.registration.showNotification('Task Reminder', {
           body: `It's time for: ${task.title}`,
           icon: '/android-icon-192x192.png',
         });
       }, timeUntilNotification);
+    } else {
+      console.log(`SW: Notification time ${notificationTime} is in the past, skipping`);
     }
   }
 });
