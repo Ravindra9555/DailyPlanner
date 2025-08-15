@@ -1,103 +1,306 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Calendar, Plus, Trash2, Sun, Moon } from "lucide-react";
+import { format, parseISO, isToday, isTomorrow, isYesterday } from "date-fns";
+import { DatePicker } from "@/components/DatePicker";
+import { TaskForm } from "@/components/TaskForm";
+import { TaskList } from "@/components/TaskList";
+import { EmptyState } from "@/components/EmptyState";
+import {
+  saveTasksToLocalStorage,
+  getTasksFromLocalStorage,
+} from "@/lib/storage";
+import { cn } from "@/lib/utils";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+
+export default function DailyPlanner() {
+  const { theme, setTheme } = useTheme();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [tasks, setTasks] = useState<
+    Record<
+      string,
+      Array<{
+        id: string;
+        title: string;
+        description?: string;
+        startTime: string;
+        endTime: string;
+        completed: boolean;
+      }>
+    >
+  >({});
+  const [editingTask, setEditingTask] = useState<{
+    id: string;
+    title: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    completed: boolean;
+  } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [notificationPermission, setNotificationPermission] =
+    useState<NotificationPermission>("default");
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker
+        .register("/sw.js")
+        .then((registration) => console.log("SW registered:", registration))
+        .catch((error) => console.error("SW registration failed:", error));
+    }
+    if ("Notification" in window) {
+      setNotificationPermission(Notification.permission);
+      if (Notification.permission === "default") {
+        requestNotificationPermission();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const storedTasks = getTasksFromLocalStorage();
+    if (storedTasks) {
+      setTasks(storedTasks);
+    }
+  }, []);
+
+  useEffect(() => {
+    saveTasksToLocalStorage(tasks);
+    setupNotifications();
+  }, [tasks]);
+
+  const setupNotifications = () => {
+    if (
+      "Notification" in window &&
+      Notification.permission === "granted" &&
+      navigator.serviceWorker
+    ) {
+      navigator.serviceWorker.ready.then((registration) => {
+        Object.entries(tasks).forEach(([dateKey, taskList]) => {
+          const taskDate = new Date(dateKey);
+          const today = new Date();
+          if (taskDate >= new Date(today.setHours(0, 0, 0, 0))) {
+            taskList.forEach((task) => {
+              registration?.active?.postMessage({
+                type: "scheduleNotification",
+                task,
+                dateKey,
+              });
+            });
+          }
+        });
+      });
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    if ("Notification" in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        setNotificationPermission(permission);
+        if (permission === "granted") {
+          setupNotifications();
+        }
+      } catch (error) {
+        console.error("Notification permission error:", error);
+      }
+    }
+  };
+
+  const dateKey = format(selectedDate, "yyyy-MM-dd");
+  const currentDateTasks = tasks[dateKey] || [];
+
+  const handleAddTask = (newTask: {
+    id: string;
+    title: string;
+    description?: string;
+    startTime: string;
+    endTime: string;
+    completed: boolean;
+  }) => {
+    if (editingTask) {
+      const updatedTasks = currentDateTasks.map((task) =>
+        task.id === editingTask.id ? newTask : task
+      );
+      setTasks({ ...tasks, [dateKey]: updatedTasks });
+      setEditingTask(null);
+    } else {
+      setTasks({
+        ...tasks,
+        [dateKey]: [...currentDateTasks, newTask],
+      });
+    }
+    setIsDialogOpen(false);
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    const updatedTasks = currentDateTasks.filter((task) => task.id !== taskId);
+    setTasks({ ...tasks, [dateKey]: updatedTasks });
+  };
+
+  const handleDeleteAllTasks = () => {
+    const updatedTasks = { ...tasks };
+    delete updatedTasks[dateKey];
+    setTasks(updatedTasks);
+  };
+
+  const toggleTaskCompletion = (taskId: string) => {
+    const updatedTasks = currentDateTasks.map((task) =>
+      task.id === taskId ? { ...task, completed: !task.completed } : task
+    );
+    setTasks({ ...tasks, [dateKey]: updatedTasks });
+  };
+
+  const getDateTitle = (date: Date) => {
+    if (isToday(date)) return "Today";
+    if (isTomorrow(date)) return "Tomorrow";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "EEEE, MMMM d");
+  };
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div
+      className="min-h-screen bg-cover bg-center bg-fixed"
+      style={{
+        backgroundImage: `url('/plan.jpg')`,
+      }}
+    >
+      <div className="min-h-screen  bg-black/50 backdrop-blur-[10] flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="w-full max-w-5xl min-h-[80vh] bg-white/90 dark:bg-gray-900/90 rounded-2xl shadow-xl overflow-hidden"
+        >
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-4">
+              <motion.div
+                initial={{ x: -20 }}
+                animate={{ x: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white">
+                  Task Planner
+                </h1>
+                <div className="flex items-center mt-1 text-gray-600 dark:text-gray-300">
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                  <span className="text-base sm:text-lg font-medium">
+                    {getDateTitle(selectedDate)}
+                  </span>
+                </div>
+              </motion.div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                className="text-gray-600 dark:text-gray-300 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 rounded-full w-10 h-10 sm:w-12 sm:h-12"
+              >
+                {theme === "dark" ? (
+                  <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
+                ) : (
+                  <Moon className="w-4 h-4 sm:w-5 sm:h-5" />
+                )}
+              </Button>
+            </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-3"
+            >
+              <DatePicker
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+              />
+              <div className="flex flex-wrap gap-2 w-full">
+                <Button
+                  onClick={() => {
+                    setEditingTask(null);
+                    setIsDialogOpen(true);
+                  }}
+                  className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm sm:text-base py-2 sm:py-2.5"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Task
+                </Button>
+                {currentDateTasks.length > 0 && (
+                  <Button
+                    onClick={handleDeleteAllTasks}
+                    variant="outline"
+                    className="flex-1 sm:flex-none border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-sm sm:text-base py-2 sm:py-2.5"
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Clear All
+                  </Button>
+                )}
+              </div>
+            </motion.div>
+            <AnimatePresence>
+              {notificationPermission !== "granted" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="mb-4 p-4 bg-blue-100/80 dark:bg-blue-900/50 rounded-lg flex items-center justify-between"
+                >
+                  <div className="text-sm text-blue-700 dark:text-blue-300">
+                    Enable notifications for task reminders
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={requestNotificationPermission}
+                    className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                  >
+                    Enable
+                  </Button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+            >
+              {currentDateTasks.length > 0 ? (
+                <TaskList
+                  tasks={currentDateTasks}
+                  onEditTask={(task) => {
+                    setEditingTask(task);
+                    setIsDialogOpen(true);
+                  }}
+                  onDeleteTask={handleDeleteTask}
+                  onToggleComplete={toggleTaskCompletion}
+                />
+              ) : (
+                <EmptyState onAddTask={() => setIsDialogOpen(true)} />
+              )}
+            </motion.div>
+          </div>
+        </motion.div>
+
+        <TaskForm
+          isOpen={isDialogOpen}
+          onClose={() => {
+            setIsDialogOpen(false);
+            setEditingTask(null);
+          }}
+          onSubmit={handleAddTask}
+          initialTask={editingTask}
+        />
+      </div>
     </div>
   );
 }
